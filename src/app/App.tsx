@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { FieldCard, AggregatedAbility, SliverCard } from '@/app/types/sliver';
 import { SLIVER_CARDS } from '@/app/data/slivers';
 import { HomeScreen } from '@/app/components/HomeScreen';
@@ -8,11 +8,46 @@ import { EditFieldScreen } from '@/app/components/EditFieldScreen';
 
 type Screen = 'home' | 'search' | 'add' | 'edit';
 
+const LS_FIELD_KEY = 'sliver_field_v1';
+const LS_RECENT_KEY = 'sliver_recent_v1';
+
 export default function App() {
   const [currentScreen, setCurrentScreen] = useState<Screen>('home');
   const [fieldCards, setFieldCards] = useState<FieldCard[]>([]);
   const [selectedCard, setSelectedCard] = useState<SliverCard | null>(null);
   const [recentCards, setRecentCards] = useState<string[]>([]);
+
+  // localStorage から復元（初回のみ）
+  useEffect(() => {
+    try {
+      const rawField = localStorage.getItem(LS_FIELD_KEY);
+      if (rawField) {
+        const parsed = JSON.parse(rawField);
+        if (Array.isArray(parsed)) setFieldCards(parsed);
+      }
+    } catch {}
+  
+    try {
+      const rawRecent = localStorage.getItem(LS_RECENT_KEY);
+      if (rawRecent) {
+        const parsed = JSON.parse(rawRecent);
+        if (Array.isArray(parsed)) setRecentCards(parsed);
+      }
+    } catch {}
+  }, []);
+
+  // localStorage に保存（fieldCards / recentCards が変わるたび）
+  useEffect(() => {
+    try {
+      localStorage.setItem(LS_FIELD_KEY, JSON.stringify(fieldCards));
+    } catch {}
+  }, [fieldCards]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(LS_RECENT_KEY, JSON.stringify(recentCards));
+    } catch {}
+  }, [recentCards]);
 
   // 能力を集計
   const aggregatedAbilities = useMemo(() => {
@@ -26,10 +61,17 @@ export default function App() {
       card.abilities.forEach(ability => {
         // P/T修正値はすべて合算して1つにまとめる
         if (ability.type === 'pt-modifier') {
+          // ✅ 自分に効くP/Tだけを対象にする（ALLは常に、YOUはME由来のみ）
+          const appliesToMe =
+            ability.scope === 'ALL' ||
+            (ability.scope === 'YOU' && fieldCard.controller === 'ME');
+
+          if (!appliesToMe) return;
+
           const existingSource = ptModifierSources.find(
             s => s.cardId === fieldCard.cardId && s.controller === fieldCard.controller
           );
-          
+
           if (existingSource) {
             existingSource.count += fieldCard.count;
           } else {
@@ -72,7 +114,7 @@ export default function App() {
       });
     });
 
-    // P/T修正値が1つ以上ある場合、合算したカードを追加
+    // P/T修正値が1つ以上ある場合、合算
     if (ptModifierSources.length > 0) {
       // 合計値を計算
       let totalPower = 0;
@@ -82,10 +124,17 @@ export default function App() {
         const card = SLIVER_CARDS.find(c => c.id === source.cardId);
         if (card) {
           card.abilities.forEach(ability => {
-            if (ability.type === 'pt-modifier') {
-              totalPower += (ability.powerModifier || 0) * source.count;
-              totalToughness += (ability.toughnessModifier || 0) * source.count;
-            }
+            if (ability.type !== 'pt-modifier') return;
+
+            // ✅ 自分に効くP/Tだけを足す（ALLは常に、YOUはME由来のみ）
+            const appliesToMe =
+              ability.scope === 'ALL' ||
+              (ability.scope === 'YOU' && source.controller === 'ME');
+
+            if (!appliesToMe) return;
+
+            totalPower += (ability.powerModifier || 0) * source.count;
+            totalToughness += (ability.toughnessModifier || 0) * source.count;
           });
         }
       });
@@ -175,6 +224,7 @@ export default function App() {
   const handleReset = () => {
     if (confirm('盤面をリセットしてもよろしいですか？')) {
       setFieldCards([]);
+      setRecentCards([]); // ✅ 追加（履歴もリセット）
     }
   };
 

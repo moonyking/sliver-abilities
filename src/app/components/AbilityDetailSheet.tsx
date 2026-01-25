@@ -32,16 +32,24 @@ export function AbilityDetailSheet({ aggregatedAbility, onClose, onEditField }: 
           {/* 能力要約とバッジ */}
           <div>
             <div className="flex items-center gap-2 mb-2">
-              <Badge 
-                variant={ability.scope === 'ALL' ? 'default' : 'secondary'}
+              <Badge
+                variant={
+                ability.id === 'pt-modifier-combined'
+                  ? 'outline'
+                  : (ability.scope === 'ALL' ? 'default' : 'secondary')
+                }
                 className="font-bold"
               >
-                {ability.scope === 'ALL' ? 'すべてのスリヴァー' : 'あなたのスリヴァー'}
+                {ability.id === 'pt-modifier-combined'
+                  ? '合計（P/T修正）'
+                  : (ability.scope === 'ALL' ? 'すべてのスリヴァー' : 'あなたのスリヴァー')}
               </Badge>
+
               {ability.conditional && (
                 <Badge variant="outline">条件付き</Badge>
               )}
             </div>
+
             {ability.keyword && (
               <h3 className="text-2xl font-bold text-slate-900 dark:text-slate-100 mb-2">
                 {ability.keyword}
@@ -78,8 +86,11 @@ export function AbilityDetailSheet({ aggregatedAbility, onClose, onEditField }: 
           {/* ソース一覧 */}
           <div>
             <h4 className="font-bold text-slate-900 dark:text-slate-100 mb-2">
-              付与元カード ({sources.reduce((sum, s) => sum + s.count, 0)}枚)
+              {ability.id === 'pt-modifier-combined'
+                ? `内訳（寄与元） (${sources.reduce((sum, s) => sum + s.count, 0)}枚)`
+                : `付与元カード (${sources.reduce((sum, s) => sum + s.count, 0)}枚)`}
             </h4>
+
             <div className="space-y-2">
               {sources.map((source) => {
                 const card = SLIVER_CARDS.find(c => c.id === source.cardId);
@@ -90,12 +101,20 @@ export function AbilityDetailSheet({ aggregatedAbility, onClose, onEditField }: 
                 let cardToughnessMod = 0;
                 if (ability.type === 'pt-modifier') {
                   card.abilities.forEach(ab => {
-                    if (ab.type === 'pt-modifier') {
-                      cardPowerMod += (ab.powerModifier || 0) * source.count;
-                      cardToughnessMod += (ab.toughnessModifier || 0) * source.count;
-                    }
+                    if (ab.type !== 'pt-modifier') return;
+
+                    // ✅ 詳細の内訳も「自分に効く分だけ」に揃える
+                    const appliesToMe =
+                      ab.scope === 'ALL' ||
+                      (ab.scope === 'YOU' && source.controller === 'ME');
+
+                    if (!appliesToMe) return;
+
+                    cardPowerMod += (ab.powerModifier || 0) * source.count;
+                    cardToughnessMod += (ab.toughnessModifier || 0) * source.count;
                   });
                 }
+
                 
                 return (
                   <div 
