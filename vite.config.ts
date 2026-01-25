@@ -10,6 +10,10 @@ export default defineConfig({
     react(),
     tailwindcss(),
   ],
+
+  // ✅ GitHub Pages (https://<user>.github.io/sliver-abilities/) 用
+  base: '/sliver-abilities/',
+
   resolve: {
     alias: {
       // Alias @ to the src directory
